@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Threads 戀愛話題監測</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background:#f5f5f5; color:#333; }
+.header { background:linear-gradient(135deg,#121214,#1a1a24); color:#f0f0f0; padding:1.8rem 1rem; text-align:center; }
+.header h1 { font-size:1.4rem; font-weight:600; margin-bottom:0.3rem; letter-spacing:0.5px; }
+.header .meta { font-size:0.8rem; color:rgba(255,255,255,0.5); }
+.tabs { display:flex; background:#fff; border-bottom:1px solid #e9ecef; position:sticky; top:0; z-index:10; overflow-x:auto; }
+.tab { flex:1; min-width:80px; padding:0.8rem 0.5rem; text-align:center; cursor:pointer; font-size:0.85rem; color:#868e96; border-bottom:3px solid transparent; transition:all .2s; white-space:nowrap; }
+.tab:hover { background:#f8f9fa; }
+.tab.active { color:#212529; border-bottom-color:#f5a0b5; font-weight:600; }
+.content { max-width:960px; margin:0 auto; padding:1rem; }
+.page { display:none; }
+.page.active { display:block; }
+.metrics { display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:0.8rem; margin-bottom:1.5rem; }
+.metric-card { background:#fff; border-radius:10px; padding:1rem; text-align:center; box-shadow:0 1px 3px rgba(0,0,0,.06); border:1px solid #e9ecef; }
+.metric-value { font-size:1.5rem; font-weight:700; color:#212529; }
+.metric-label { font-size:0.75rem; color:#868e96; margin-top:0.2rem; letter-spacing:0.3px; }
+.chart-container { background:#fff; border-radius:10px; padding:1rem; margin-bottom:1rem; box-shadow:0 1px 3px rgba(0,0,0,.06); border:1px solid #e9ecef; }
+.chart-container h3 { font-size:0.9rem; color:#212529; margin-bottom:0.5rem; font-weight:600; }
+.charts-row { display:grid; grid-template-columns:1fr 1fr; gap:1rem; }
+@media(max-width:640px){ .charts-row { grid-template-columns:1fr; } }
+.punchline-row { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:0.8rem; margin-bottom:1.5rem; }
+.punchline-card { background:#f8f9fa; border-radius:12px; padding:1.2rem; text-align:center; box-shadow:0 1px 4px rgba(0,0,0,0.06); }
+.punchline-text { font-size:1.05rem; font-weight:600; color:#212529; line-height:1.5; margin-bottom:0.4rem; }
+.punchline-source { font-size:0.8rem; color:rgba(0,0,0,0.45); }
+.topic-card { background:#fff; border-radius:10px; padding:1rem; margin-bottom:0.8rem; box-shadow:0 1px 3px rgba(0,0,0,.06); border:1px solid #e9ecef; }
+.topic-title { font-weight:600; color:#212529; margin-bottom:0.3rem; font-size:0.95rem; }
+.topic-meta { font-size:0.8rem; color:#868e96; margin-bottom:0.5rem; }
+.topic-summary { font-size:0.85rem; line-height:1.6; color:#495057; padding:0.5rem 0.7rem; background:#f8f9fa; border-radius:8px; border-left:3px solid #f5a0b5; }
+.post-card { background:#fff; border-radius:8px; padding:0.8rem; margin-bottom:0.6rem; box-shadow:0 1px 2px rgba(0,0,0,.04); border:1px solid #e9ecef; }
+.post-card h4 { font-size:0.85rem; margin-bottom:0.2rem; color:#212529; }
+.post-card .meta { font-size:0.75rem; color:#868e96; }
+.post-card .text { font-size:0.85rem; color:#495057; margin:0.3rem 0; white-space:pre-wrap; max-height:4em; overflow:hidden; cursor:pointer; }
+.post-card .text.expanded { max-height:none; }
+.post-card .stats { font-size:0.8rem; color:#868e96; }
+.post-card .post-url { display:inline-block; margin-top:0.3rem; padding:0.2rem 0.8rem; background:#212529; color:#fff; border-radius:6px; text-decoration:none; font-size:0.75rem; }
+.post-card .post-url:hover { background:#495057; }
+.detail-container { background:#fff; border-radius:10px; padding:1rem; box-shadow:0 1px 3px rgba(0,0,0,.06); border:1px solid #e9ecef; }
+.detail-container .text { white-space:pre-wrap; font-size:0.9rem; line-height:1.6; margin:0.8rem 0; color:#495057; }
+.detail-container .post-url { display:inline-block; margin-top:0.5rem; padding:0.3rem 1rem; background:#212529; color:#fff; border-radius:6px; text-decoration:none; font-size:0.85rem; }
+.comment { background:#f8f9fa; border-radius:6px; padding:0.5rem 0.8rem; margin:0.3rem 0; font-size:0.85rem; }
+.comment-author { font-weight:600; color:#212529; font-size:0.8rem; }
+.post-select { width:100%; padding:0.5rem; border:1px solid #e9ecef; border-radius:6px; margin-bottom:1rem; font-size:0.85rem; color:#495057; }
+.filters { display:flex; gap:0.5rem; flex-wrap:wrap; margin-bottom:1rem; }
+.filter-btn { padding:0.3rem 0.8rem; border:1px solid #e9ecef; border-radius:20px; background:#fff; cursor:pointer; font-size:0.8rem; color:#868e96; }
+.filter-btn.active { background:#212529; color:#fff; border-color:#212529; }
+.filter-btn:hover { background:#f8f9fa; }
+.footer { text-align:center; color:#adb5bd; font-size:0.75rem; padding:2rem 0; border-top:1px solid #e9ecef; margin-top:2rem; }
+</style>
+</head>
+<body>
+<div class="header">
+<h1>&#128149; Threads 戀愛話題熱門貼文監測</h1>
+<div class="meta">每日 09:00 自動更新 &middot; 資料來源：Threads.net</div>
+</div>
+
+<div class="tabs" id="tabs">
+<div class="tab active" data-tab="overview">&#128202; 總覽</div>
+<div class="tab" data-tab="topics">&#128218; 主題分群</div>
+<div class="tab" data-tab="posts">&#128196; 貼文列表</div>
+<div class="tab" data-tab="detail">&#128269; 貼文詳情</div>
+</div>
+
+<div class="content">
+<div class="page active" id="page-overview">
+<div class="metrics">
+<div class="metric-card"><div class="metric-value">25</div><div class="metric-label">&#128202; 貼文總數</div></div>
+<div class="metric-card"><div class="metric-value">30,153</div><div class="metric-label">&#10084; 總讚數</div></div>
+<div class="metric-card"><div class="metric-value">881</div><div class="metric-label">&#128172; 總留言數</div></div>
+<div class="metric-card"><div class="metric-value">1,206</div><div class="metric-label">&#11088; 平均讚數</div></div>
+</div>
+<div id="punchlineContainer" class="punchline-row"></div>
+<div class="charts-row">
+<div class="chart-container"><h3>&#127921; 主題分佈</h3><canvas id="topicBarChart"></canvas></div>
+<div class="chart-container"><h3>&#128200; 讚數排行</h3><canvas id="likesBarChart"></canvas></div>
+</div>
+</div>
+
+<div class="page" id="page-topics">
+<div id="topicContainer"></div>
+</div>
+
+<div class="page" id="page-posts">
+<div class="filters" id="filterContainer"></div>
+<div id="postListContainer"></div>
+</div>
+
+<div class="page" id="page-detail">
+<select class="post-select" id="postSelect"></select>
+<div id="detailContainer"></div>
+</div>
+</div>
+
+<div class="footer">Threads 戀愛話題監測工具 &middot; 每日 09:00 自動更新</div>
+
+<script>
+const DATA = {
+  posts: [{"id": "ts_1788672723_283", "author": "behindu2026", "handle": "behindu2026", "date": "2026-09-06", "timestamp": 1788672723, "text": "3天\n這也是愛情的其中一種模樣嗎", "likes": 11000, "replies": 19, "url": "https://www.threads.com/@behindu2026/post/Dcyc0QBlAh6", "top_comments": [], "engagement": 11019, "category": "其他"}, {"id": "ts_1788672883_432", "author": "twii_ine", "handle": "twii_ine", "date": "2026-09-06", "timestamp": 1788672883, "text": "18小時\n我妹妹的小天才电话手表有一个三人群聊，另外两个小女孩分别叫唯爱赵露思和唯爱虞书欣，从今天起我对她的人际交往能力有了更进一步的认识", "likes": 9233, "replies": 57, "url": "https://www.threads.com/@twii_ine/post/Dc52f-bn4yt", "top_comments": [], "engagement": 9290, "category": "案例分享"}, {"id": "ts_1788672941_281", "author": "迴避型戀愛", "handle": "ee552414", "date": "2026-09-06", "timestamp": 1788672941, "text": "迴避型戀愛\n4天\n迴避型人格交往請自重", "likes": 2078, "replies": 322, "url": "https://www.threads.com/@ee552414/post/DcwIHcmkk_l", "top_comments": [], "engagement": 2400, "category": "其他"}, {"id": "ts_1788672841_696", "author": "2026-8-22", "handle": "_tingqi_804", "date": "2026-08-22", "timestamp": 1788672841, "text": "2026-8-22\n結婚！！！給我結！！！！", "likes": 2210, "replies": 37, "url": "https://www.threads.com/@_tingqi_804/post/DcWNbAnlBTj", "top_comments": [], "engagement": 2247, "category": "其他"}, {"id": "ts_1788672957_802", "author": "2026-8-24", "handle": "zuyan_gamer", "date": "2026-08-24", "timestamp": 1788672957, "text": "2026-8-24\n冷知識：則研的生理性別是男的，性別認同也是男的", "likes": 1969, "replies": 27, "url": "https://www.threads.com/@zuyan_gamer/post/DcaYrI8lKSz", "top_comments": [], "engagement": 1996, "category": "觀點爭論"}, {"id": "ts_1788673059_903", "author": "2026-8-25", "handle": "vvin01_", "date": "2026-08-25", "timestamp": 1788673059, "text": "2026-8-25\n單身可撩", "likes": 1164, "replies": 115, "url": "https://www.threads.com/@vvin01_/post/DcdaZnZEoJc", "top_comments": [], "engagement": 1279, "category": "其他"}, {"id": "ts_1788672957_310", "author": "2026-8-25", "handle": "ivan_linnnnnn", "date": "2026-08-25", "timestamp": 1788672957, "text": "2026-8-25\n寒男❄️", "likes": 686, "replies": 3, "url": "https://www.threads.com/@ivan_linnnnnn/post/Dcd0HDElMR7", "top_comments": [], "engagement": 689, "category": "其他"}, {"id": "ts_1788672957_234", "author": "2026-8-29", "handle": "7ycnqi", "date": "2026-08-29", "timestamp": 1788672957, "text": "2026-8-29\n有人交往過水瓶男嗎 如何\n最近暈用水瓶男但感覺他忽冷忽熱", "likes": 401, "replies": 83, "url": "https://www.threads.com/@7ycnqi/post/DcndOfykvmk", "top_comments": [], "engagement": 484, "category": "其他"}, {"id": "ts_1788672925_817", "author": "nicetmeetryu", "handle": "nicetmeetryu", "date": "2026-09-06", "timestamp": 1788672925, "text": "1天\n吵架又怎樣 還不是得坐一起", "likes": 238, "replies": 11, "url": "https://www.threads.com/@nicetmeetryu/post/Dc243iaEcVi", "top_comments": [], "engagement": 249, "category": "抱怨"}, {"id": "ts_1788673059_440", "author": "2026-8-25", "handle": "ark.hair322", "date": "2026-08-25", "timestamp": 1788673059, "text": "2026-8-25\n他單身…", "likes": 216, "replies": 21, "url": "https://www.threads.com/@ark.hair322/post/DcdZjh2kzbp", "top_comments": [], "engagement": 237, "category": "其他"}, {"id": "ts_1788672723_182", "author": "LE", "handle": "cl_1025_", "date": "2026-09-06", "timestamp": 1788672723, "text": "LE\n3天\n談戀愛是什麼感覺 好想知道", "likes": 220, "replies": 9, "url": "https://www.threads.com/@cl_1025_/post/DcyXLD_EhRd", "top_comments": [], "engagement": 229, "category": "其他"}, {"id": "ts_1788673104_498", "author": "outsider.ht", "handle": "outsider.ht", "date": "2026-09-06", "timestamp": 1788673104, "text": "1天\n-\n喜歡 是可以控制的嗎", "likes": 126, "replies": 87, "url": "https://www.threads.com/@outsider.ht/post/Dc4A8rcEdF6", "top_comments": [], "engagement": 213, "category": "其他"}, {"id": "ts_1788672855_756", "author": "2026-8-20", "handle": "yiiin._106", "date": "2026-08-20", "timestamp": 1788672855, "text": "2026-8-20\n哇是情侶嗎(◐‿◑)�\nplu14475", "likes": 202, "replies": 6, "url": "https://www.threads.com/@yiiin._106/post/DcQ5gNeDw6O", "top_comments": [], "engagement": 208, "category": "其他"}, {"id": "ts_1788672738_200", "author": "turtle.3966092", "handle": "turtle.3966092", "date": "2026-09-06", "timestamp": 1788672738, "text": "6天\n真正讓感情降溫的，是「被忽略感」\n一個人開始對感情失望，通常不是因為某件驚天動地的大事，而是很多次想靠近你的時候，都沒有得到想要的回應。那些當下看起來無所謂的小細節，時間久了，反而最容易消耗一個人的愛。", "likes": 112, "replies": 5, "url": "https://www.threads.com/@turtle.3966092/post/DcqjL84lHOU", "top_comments": [], "engagement": 117, "category": "觀點爭論"}, {"id": "ts_1788672897_636", "author": "sophia002225", "handle": "sophia002225", "date": "2026-09-06", "timestamp": 1788672897, "text": "5天\n好想談戀愛", "likes": 52, "replies": 7, "url": "https://www.threads.com/@sophia002225/post/DctWkjbmSME", "top_comments": [], "engagement": 59, "category": "其他"}, {"id": "ts_1788672957_708", "author": "sunnygirl_jade7856", "handle": "sunnygirl_jade7856", "date": "2026-09-06", "timestamp": 1788672957, "text": "5天\n🔥 從日柱看：十大暖男日柱\n有些男人不是很會說情話\n但他會用行動讓你感覺到「我一直都在」💕\n① 丁卯｜溫柔紳士型\n細膩體貼，很會照顧你的情緒\n② 戊寅｜人間避風港\n遇到事情會站出來，給你滿滿安全感\n③ 己亥｜溫柔照顧系\n不太說甜話，但生活細節都替你想到\n④ 甲午｜太陽系暖男\n熱情又主動，很會陪你、逗你開心\n⑤ 乙卯｜讀心系暖男\n你說沒事，他卻看得出你其實有事\n⑥ 辛巳｜外冷內熱型\n表面有距離，認定你後卻特別寵\n⑦ 壬寅｜行動派守護者\n不只會說「我幫你」，而是真的出手幫你\n⑧ 癸卯｜情緒陪伴型\n願意聽你說，也接得住你的情緒\n⑨ 丙寅｜大男孩暖陽型\n陽光熱情，總有辦法讓你心情變好\n⑩ 己卯｜細節寵愛型\n記得你隨口說過的小事，默默放在心上\n真正的暖男\n不是最會說情話的人\n而是讓你相處久了以後，越來越安心的人", "likes": 54, "replies": 5, "url": "https://www.threads.com/@sunnygirl_jade7856/post/DcuN65-EUqS", "top_comments": [], "engagement": 59, "category": "觀點爭論"}, {"id": "ts_1788672784_206", "author": "2026-8-29", "handle": "ioki_maomao500", "date": "2026-08-29", "timestamp": 1788672784, "text": "2026-8-29\nAyame 同 rei 係真愛😭😭😭", "likes": 41, "replies": 7, "url": "https://www.threads.com/@ioki_maomao500/post/DcnZvyVifQi", "top_comments": [], "engagement": 48, "category": "其他"}, {"id": "ts_1788673031_136", "author": "2026-8-17", "handle": "_.ll4rxr", "date": "2026-08-17", "timestamp": 1788673031, "text": "2026-8-17\n已讀不回係咩心態？", "likes": 31, "replies": 12, "url": "https://www.threads.com/@_.ll4rxr/post/DcIc1jynw30", "top_comments": [], "engagement": 43, "category": "其他"}, {"id": "ts_1788673104_488", "author": "2026-8-28", "handle": "elenakoleonie", "date": "2026-08-28", "timestamp": 1788673104, "text": "2026-8-28\n喜歡是可以控制的嗎😎", "likes": 35, "replies": 3, "url": "https://www.threads.com/@elenakoleonie/post/Dcl0oeoE-F2", "top_comments": [], "engagement": 38, "category": "其他"}, {"id": "ts_1788672798_895", "author": "2026-8-20", "handle": "ch_82468", "date": "2026-08-20", "timestamp": 1788672798, "text": "2026-8-20\n分手後到底該怎麼走出來⋯⋯", "likes": 13, "replies": 22, "url": "https://www.threads.com/@ch_82468/post/DcQ8yHlD1Dw", "top_comments": [], "engagement": 35, "category": "求助請益"}, {"id": "ts_1788672911_508", "author": "2026-8-27", "handle": "roger777_tw", "date": "2026-08-27", "timestamp": 1788672911, "text": "2026-8-27\n有沒有男朋友或女朋友\n有，交往好幾年了\n16%\n沒有，我單身🙂\n84%\n397票 · 票選活動已結束", "likes": 29, "replies": 4, "url": "https://www.threads.com/@roger777_tw/post/DcikpQqku6B", "top_comments": [], "engagement": 33, "category": "其他"}, {"id": "ts_1788672738_404", "author": "情緒低落", "handle": "luae0911", "date": "2026-09-06", "timestamp": 1788672738, "text": "情緒低落\n3天\n情緒低落，很悶很想哭，很無助的時候\n都會怎麼面對當下的情緒\n我已经很努力的控制自己的情绪 · 大头针 Official", "likes": 19, "replies": 5, "url": "https://www.threads.com/@luae0911/post/DcyetqJE2S9", "top_comments": [], "engagement": 24, "category": "其他"}, {"id": "ts_1788672897_348", "author": "2026-8-25", "handle": "zyy7s_", "date": "2026-08-25", "timestamp": 1788672897, "text": "2026-8-25\n好想談戀愛", "likes": 20, "replies": 2, "url": "https://www.threads.com/@zyy7s_/post/Dcdnz9fFNfA", "top_comments": [], "engagement": 22, "category": "其他"}, {"id": "ts_1788672925_973", "author": "2026-8-17", "handle": "itsssssstutu", "date": "2026-08-17", "timestamp": 1788672925, "text": "2026-8-17\n為什麼又在吵架", "likes": 2, "replies": 10, "url": "https://www.threads.com/@itsssssstutu/post/DcJH-fxGKUP", "top_comments": [], "engagement": 12, "category": "觀點爭論"}, {"id": "ts_1788672688_349", "author": "2026-8-17", "handle": "dani440261", "date": "2026-08-17", "timestamp": 1788672688, "text": "2026-8-17\n找男友", "likes": 2, "replies": 2, "url": "https://www.threads.com/@dani440261/post/DcIoyA6kXJG", "top_comments": [], "engagement": 4, "category": "其他"}],
+  topicDistribution: {"其他": 18, "抱怨": 1, "案例分享": 1, "求助請益": 1, "觀點爭論": 4},
+  topicSummaries: [{"topic": "觀點爭論", "post_count": 4, "total_likes": 2137, "top_post": {"id": "ts_1788672957_802", "author": "2026-8-24", "handle": "zuyan_gamer", "date": "2026-08-24", "timestamp": 1788672957, "text": "2026-8-24\n冷知識：則研的生理性別是男的，性別認同也是男的", "likes": 1969, "replies": 27, "url": "https://www.threads.com/@zuyan_gamer/post/DcaYrI8lKSz", "top_comments": [], "engagement": 1996, "category": "觀點爭論"}, "summary": "【爭什麼】「2026-8-24 冷知識：則研的生理性別是男的，性別認同也是男的」 【正方金句】冷知識：則研的生理性別是男的，性別認同也是男的 【其他聲音】冷知識：則研的生理性別是男的，性別認同也是男的｜不只會說「我幫你」，而是真的出手幫你｜你說沒事，他卻看得出你其實有事 （共 4 篇交鋒，最高讚 1,969）"}, {"topic": "案例分享", "post_count": 1, "total_likes": 9233, "top_post": {"id": "ts_1788672883_432", "author": "twii_ine", "handle": "twii_ine", "date": "2026-09-06", "timestamp": 1788672883, "text": "18小時\n我妹妹的小天才电话手表有一个三人群聊，另外两个小女孩分别叫唯爱赵露思和唯爱虞书欣，从今天起我对她的人际交往能力有了更进一步的认识", "likes": 9233, "replies": 57, "url": "https://www.threads.com/@twii_ine/post/Dc52f-bn4yt", "top_comments": [], "engagement": 9290, "category": "案例分享"}, "summary": "【真實愛情切片】18小時 我妹妹的小天才电话手表有一个三人群聊，另外两个小女孩分别叫唯爱赵露思和唯爱虞书欣，从今天起⋯ （1 篇故事，最高 9,233 讚）"}, {"topic": "抱怨", "post_count": 1, "total_likes": 238, "top_post": {"id": "ts_1788672925_817", "author": "nicetmeetryu", "handle": "nicetmeetryu", "date": "2026-09-06", "timestamp": 1788672925, "text": "1天\n吵架又怎樣 還不是得坐一起", "likes": 238, "replies": 11, "url": "https://www.threads.com/@nicetmeetryu/post/Dc243iaEcVi", "top_comments": [], "engagement": 249, "category": "抱怨"}, "summary": "【最爆怨】1天 吵架又怎樣 還不是得坐一起 （1 篇抱怨文，最高 238 讚）"}, {"topic": "求助請益", "post_count": 1, "total_likes": 13, "top_post": {"id": "ts_1788672798_895", "author": "2026-8-20", "handle": "ch_82468", "date": "2026-08-20", "timestamp": 1788672798, "text": "2026-8-20\n分手後到底該怎麼走出來⋯⋯", "likes": 13, "replies": 22, "url": "https://www.threads.com/@ch_82468/post/DcQ8yHlD1Dw", "top_comments": [], "engagement": 35, "category": "求助請益"}, "summary": "【最糾結】2026-8-20 分手後到底該怎麼走出來⋯⋯ 【核心問題】分手後到底該怎麼走出來⋯⋯ （1 篇求助，最高 13 讚）"}, {"topic": "其他", "post_count": 18, "total_likes": 18532, "top_post": {"id": "ts_1788672723_283", "author": "behindu2026", "handle": "behindu2026", "date": "2026-09-06", "timestamp": 1788672723, "text": "3天\n這也是愛情的其中一種模樣嗎", "likes": 11000, "replies": 19, "url": "https://www.threads.com/@behindu2026/post/Dcyc0QBlAh6", "top_comments": [], "engagement": 11019, "category": "其他"}, "summary": "【混合話題】3天 這也是愛情的其中一種模樣嗎（18 篇，最高11,000讚）"}],
+  punchlines: [{"text": "結婚！！！給我結！！！！", "source": "2026-8-22", "likes": 2210, "score": 4}, {"text": "你說沒事，他卻看得出你其實有事", "source": "sunnygirl_jade7856", "likes": 54, "score": 0}, {"text": "不只會說「我幫你」，而是真的出手幫你", "source": "sunnygirl_jade7856", "likes": 54, "score": 0}],
+};
+
+const CHART_COLORS = ['#f5a0b5','#e8a87c','#b8a9c9','#d4c5a9','#a8c5c9','#c9b8a8','#d4b8c9'];
+
+// Tab switching
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById('page-' + tab.dataset.tab).classList.add('active');
+  });
+});
+
+// Punchlines
+const punchlineContainer = document.getElementById('punchlineContainer');
+DATA.punchlines.forEach(pl => {
+  const div = document.createElement('div');
+  div.className = 'punchline-card';
+  div.innerHTML = `<div class="punchline-text">\u201c${pl.text}\u201d</div><div class="punchline-source">\u2014 ${pl.source} &middot; &#10084; ${pl.likes?.toLocaleString()}</div>`;
+  punchlineContainer.appendChild(div);
+});
+
+// Topic horizontal bar chart
+const dist = DATA.topicDistribution;
+const sortedDist = Object.entries(dist).sort((a,b) => b[1] - a[1]);
+new Chart(document.getElementById('topicBarChart'), {
+  type: 'bar',
+  data: {
+    labels: sortedDist.map(([k]) => k),
+    datasets: [{
+      data: sortedDist.map(([,v]) => v),
+      backgroundColor: ['#f5a0b5','#e8a87c','#b8a9c9','#d4c5a9','#a8c5c9','#c9b8a8','#d4b8c9'],
+      borderRadius: 4,
+    }]
+  },
+  options: {
+    responsive:true, maintainAspectRatio:true, indexAxis:'y',
+    plugins:{ legend:{ display:false } },
+    scales:{
+      x:{ grid:{ display:false }, ticks:{ display:false }, title:{ display:false } },
+      y:{ grid:{ display:false }, title:{ display:false } }
+    }
+  }
+});
+
+// Likes bar chart
+const sorted = [...DATA.posts].sort((a,b) => b.likes - a.likes).slice(0,10);
+const labels = sorted.map(p => (p.author || '\u533f\u540d') + ' ' + (p.text||'').slice(0,15).replace(/\n/g,' ') + '\u22ef');
+new Chart(document.getElementById('likesBarChart'), {
+  type: 'bar',
+  data: {
+    labels: labels,
+    datasets: [{
+      label: '\u8b9a\u6578',
+      data: sorted.map(p => p.likes),
+      backgroundColor: '#f5a0b5',
+      borderRadius: 4,
+    }]
+  },
+  options: {
+    responsive:true, maintainAspectRatio:true, indexAxis:'y',
+    plugins:{ legend:{ display:false } },
+    scales:{
+      x:{ grid:{ display:false }, ticks:{ callback:v=>v>=1000?(v/1000).toFixed(0)+'k':v } },
+      y:{ grid:{ display:false }, title:{ display:false } }
+    },
+    layout:{ padding:{ right:40 } }
+  }
+});
+
+// Topic summaries
+const topicContainer = document.getElementById('topicContainer');
+DATA.topicSummaries.forEach(s => {
+  const div = document.createElement('div');
+  div.className = 'topic-card';
+  div.innerHTML = `<div class="topic-title">&#128204; ${s.topic} <span class="topic-meta">（${s.post_count} 則 · &#10084; ${s.total_likes?.toLocaleString()}）</span></div><div class="topic-summary">${s.summary}</div>`;
+  topicContainer.appendChild(div);
+});
+
+// Filters
+const filterContainer = document.getElementById('filterContainer');
+const allBtn = document.createElement('button');
+allBtn.className = 'filter-btn active';
+allBtn.textContent = '全部';
+allBtn.dataset.filter = 'all';
+filterContainer.appendChild(allBtn);
+const topics = [...new Set(DATA.posts.map(p => p.category || p.category_hint || '其他'))];
+topics.forEach(t => {
+  const btn = document.createElement('button');
+  btn.className = 'filter-btn';
+  btn.textContent = t;
+  btn.dataset.filter = t;
+  filterContainer.appendChild(btn);
+});
+
+let currentFilter = 'all';
+function renderPosts() {
+  const filtered = currentFilter === 'all' ? DATA.posts : DATA.posts.filter(p => (p.category || p.category_hint || '其他') === currentFilter);
+  const container = document.getElementById('postListContainer');
+  container.innerHTML = filtered.map((p,i) => `
+    <div class="post-card">
+      <h4>&#128100; ${p.author || '匿名'} <span class="meta">@${p.handle||''} &middot; ${p.date||''}</span></h4>
+      <div class="text" onclick="this.classList.toggle('expanded')">${p.text}</div>
+      <div class="stats">&#10084; ${p.likes?.toLocaleString()} &middot; &#128172; ${p.replies} &middot; ${p.category || p.category_hint || '未分類'}</div>
+      ${p.url ? '<a class="post-url" href="' + p.url + '" target="_blank" rel="noopener">&#128279; 前往原文</a>' : ''}
+    </div>
+  `).join('');
+  const sel = document.getElementById('postSelect');
+  sel.innerHTML = filtered.map((p,i) => `<option value="${i}">&#10084;${p.likes} | ${p.author||'匿名'} | ${(p.text||'').slice(0,30)}...</option>`).join('');
+  sel.onchange = () => showDetail(parseInt(sel.value));
+}
+
+filterContainer.querySelectorAll('.filter-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    filterContainer.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    currentFilter = btn.dataset.filter;
+    renderPosts();
+  });
+});
+
+function showDetail(idx) {
+  const posts = currentFilter === 'all' ? DATA.posts : DATA.posts.filter(p => (p.category || p.category_hint || '其他') === currentFilter);
+  const p = posts[idx];
+  if (!p) return;
+  const container = document.getElementById('detailContainer');
+  let comments = '';
+  (p.top_comments || []).forEach(c => {
+    comments += `<div class="comment"><div class="comment-author">${c.author||'匿名'}</div><div>${c.text}</div><div style="font-size:0.75rem;color:#adb5bd;">&#10084; ${c.likes}</div></div>`;
+  });
+  container.innerHTML = `
+    <div class="detail-container">
+      <h3>&#128100; ${p.author||'匿名'} <span style="font-weight:400;color:#868e96;">@${p.handle||''}</span></h3>
+      <div style="font-size:0.8rem;color:#868e96;">${p.date||''} &middot; ${p.category||p.category_hint||'未分類'}</div>
+      <div class="text">${p.text}</div>
+      <div style="color:#212529;font-size:0.9rem;">&#10084; ${p.likes?.toLocaleString()} &middot; &#128172; ${p.replies}</div>
+      ${p.url ? '<a class="post-url" href="' + p.url + '" target="_blank" rel="noopener">&#128279; 前往 Threads 原文</a>' : ''}
+      <div style="margin-top:0.8rem;font-weight:600;color:#212529;">&#128172; 熱門留言（前 ${(p.top_comments||[]).length} 則）</div>
+      ${comments || '<div style="color:#adb5bd;">暫無留言資料</div>'}
+    </div>
+  `;
+}
+
+renderPosts();
+showDetail(0);
+</script>
+</body>
+</html>
