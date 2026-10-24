@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Threads 戀愛話題監測</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background:#f5f5f5; color:#333; }
+.header { background:linear-gradient(135deg,#121214,#1a1a24); color:#f0f0f0; padding:1.8rem 1rem; text-align:center; }
+.header h1 { font-size:1.4rem; font-weight:600; margin-bottom:0.3rem; letter-spacing:0.5px; }
+.header .meta { font-size:0.8rem; color:rgba(255,255,255,0.5); }
+.tabs { display:flex; background:#fff; border-bottom:1px solid #e9ecef; position:sticky; top:0; z-index:10; overflow-x:auto; }
+.tab { flex:1; min-width:80px; padding:0.8rem 0.5rem; text-align:center; cursor:pointer; font-size:0.85rem; color:#868e96; border-bottom:3px solid transparent; transition:all .2s; white-space:nowrap; }
+.tab:hover { background:#f8f9fa; }
+.tab.active { color:#212529; border-bottom-color:#f5a0b5; font-weight:600; }
+.content { max-width:960px; margin:0 auto; padding:1rem; }
+.page { display:none; }
+.page.active { display:block; }
+.metrics { display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:0.8rem; margin-bottom:1.5rem; }
+.metric-card { background:#fff; border-radius:10px; padding:1rem; text-align:center; box-shadow:0 1px 3px rgba(0,0,0,.06); border:1px solid #e9ecef; }
+.metric-value { font-size:1.5rem; font-weight:700; color:#212529; }
+.metric-label { font-size:0.75rem; color:#868e96; margin-top:0.2rem; letter-spacing:0.3px; }
+.chart-container { background:#fff; border-radius:10px; padding:1rem; margin-bottom:1rem; box-shadow:0 1px 3px rgba(0,0,0,.06); border:1px solid #e9ecef; }
+.chart-container h3 { font-size:0.9rem; color:#212529; margin-bottom:0.5rem; font-weight:600; }
+.charts-row { display:grid; grid-template-columns:1fr 1fr; gap:1rem; }
+@media(max-width:640px){ .charts-row { grid-template-columns:1fr; } }
+.punchline-row { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:0.8rem; margin-bottom:1.5rem; }
+.punchline-card { background:#f8f9fa; border-radius:12px; padding:1.2rem; text-align:center; box-shadow:0 1px 4px rgba(0,0,0,0.06); }
+.punchline-text { font-size:1.05rem; font-weight:600; color:#212529; line-height:1.5; margin-bottom:0.4rem; }
+.punchline-source { font-size:0.8rem; color:rgba(0,0,0,0.45); }
+.topic-card { background:#fff; border-radius:10px; padding:1rem; margin-bottom:0.8rem; box-shadow:0 1px 3px rgba(0,0,0,.06); border:1px solid #e9ecef; }
+.topic-title { font-weight:600; color:#212529; margin-bottom:0.3rem; font-size:0.95rem; }
+.topic-meta { font-size:0.8rem; color:#868e96; margin-bottom:0.5rem; }
+.topic-summary { font-size:0.85rem; line-height:1.6; color:#495057; padding:0.5rem 0.7rem; background:#f8f9fa; border-radius:8px; border-left:3px solid #f5a0b5; }
+.post-card { background:#fff; border-radius:8px; padding:0.8rem; margin-bottom:0.6rem; box-shadow:0 1px 2px rgba(0,0,0,.04); border:1px solid #e9ecef; }
+.post-card h4 { font-size:0.85rem; margin-bottom:0.2rem; color:#212529; }
+.post-card .meta { font-size:0.75rem; color:#868e96; }
+.post-card .text { font-size:0.85rem; color:#495057; margin:0.3rem 0; white-space:pre-wrap; max-height:4em; overflow:hidden; cursor:pointer; }
+.post-card .text.expanded { max-height:none; }
+.post-card .stats { font-size:0.8rem; color:#868e96; }
+.post-card .post-url { display:inline-block; margin-top:0.3rem; padding:0.2rem 0.8rem; background:#212529; color:#fff; border-radius:6px; text-decoration:none; font-size:0.75rem; }
+.post-card .post-url:hover { background:#495057; }
+.detail-container { background:#fff; border-radius:10px; padding:1rem; box-shadow:0 1px 3px rgba(0,0,0,.06); border:1px solid #e9ecef; }
+.detail-container .text { white-space:pre-wrap; font-size:0.9rem; line-height:1.6; margin:0.8rem 0; color:#495057; }
+.detail-container .post-url { display:inline-block; margin-top:0.5rem; padding:0.3rem 1rem; background:#212529; color:#fff; border-radius:6px; text-decoration:none; font-size:0.85rem; }
+.comment { background:#f8f9fa; border-radius:6px; padding:0.5rem 0.8rem; margin:0.3rem 0; font-size:0.85rem; }
+.comment-author { font-weight:600; color:#212529; font-size:0.8rem; }
+.post-select { width:100%; padding:0.5rem; border:1px solid #e9ecef; border-radius:6px; margin-bottom:1rem; font-size:0.85rem; color:#495057; }
+.filters { display:flex; gap:0.5rem; flex-wrap:wrap; margin-bottom:1rem; }
+.filter-btn { padding:0.3rem 0.8rem; border:1px solid #e9ecef; border-radius:20px; background:#fff; cursor:pointer; font-size:0.8rem; color:#868e96; }
+.filter-btn.active { background:#212529; color:#fff; border-color:#212529; }
+.filter-btn:hover { background:#f8f9fa; }
+.footer { text-align:center; color:#adb5bd; font-size:0.75rem; padding:2rem 0; border-top:1px solid #e9ecef; margin-top:2rem; }
+</style>
+</head>
+<body>
+<div class="header">
+<h1>&#128149; Threads 戀愛話題熱門貼文監測</h1>
+<div class="meta">每日 09:00 自動更新 &middot; 資料來源：Threads.net</div>
+</div>
+
+<div class="tabs" id="tabs">
+<div class="tab active" data-tab="overview">&#128202; 總覽</div>
+<div class="tab" data-tab="topics">&#128218; 主題分群</div>
+<div class="tab" data-tab="posts">&#128196; 貼文列表</div>
+<div class="tab" data-tab="detail">&#128269; 貼文詳情</div>
+</div>
+
+<div class="content">
+<div class="page active" id="page-overview">
+<div class="metrics">
+<div class="metric-card"><div class="metric-value">50</div><div class="metric-label">&#128202; 貼文總數</div></div>
+<div class="metric-card"><div class="metric-value">137,258</div><div class="metric-label">&#10084; 總讚數</div></div>
+<div class="metric-card"><div class="metric-value">3,719</div><div class="metric-label">&#128172; 總留言數</div></div>
+<div class="metric-card"><div class="metric-value">2,745</div><div class="metric-label">&#11088; 平均讚數</div></div>
+</div>
+<div id="punchlineContainer" class="punchline-row"></div>
+<div class="charts-row">
+<div class="chart-container"><h3>&#127921; 主題分佈</h3><canvas id="topicBarChart"></canvas></div>
+<div class="chart-container"><h3>&#128200; 讚數排行</h3><canvas id="likesBarChart"></canvas></div>
+</div>
+</div>
+
+<div class="page" id="page-topics">
+<div id="topicContainer"></div>
+</div>
+
+<div class="page" id="page-posts">
+<div class="filters" id="filterContainer"></div>
+<div id="postListContainer"></div>
+</div>
+
+<div class="page" id="page-detail">
+<select class="post-select" id="postSelect"></select>
+<div id="detailContainer"></div>
+</div>
+</div>
+
+<div class="footer">Threads 戀愛話題監測工具 &middot; 每日 09:00 自動更新</div>
+
+<script>
+const DATA = {
+  posts: [{"id": "ts_1792819649_460", "author": "coward__hsu", "handle": "coward__hsu", "date": "2026-10-24", "timestamp": 1792819649, "text": "1天\n難道這就是跟年下交往先天性的壓制嗎…\n看完他吃的東西我覺得我可以暈一整天", "likes": 28000, "replies": 206, "url": "https://www.threads.com/@coward__hsu/post/DeyVXZpHcWW", "top_comments": [], "engagement": 28206, "category": "觀點爭論"}, {"id": "ts_1792819649_455", "author": "c816yy", "handle": "c816yy", "date": "2026-10-24", "timestamp": 1792819649, "text": "23小時\n絕交是指絕對要和溫柔黑長直大姊姊交往的意思嗎", "likes": 12000, "replies": 71, "url": "https://www.threads.com/@c816yy/post/De04XY4EmaY", "top_comments": [], "engagement": 12071, "category": "其他"}, {"id": "ts_1792819735_731", "author": "冰之城牆", "handle": "tomorin_540406", "date": "2026-10-11", "timestamp": 1792819735, "text": "冰之城牆\n2026-10-11\n暈船暈船٩(˃̶͈̀௰˂̶͈́)و", "likes": 12000, "replies": 69, "url": "https://www.threads.com/@tomorin_540406/post/DeWlOZ7kuKV", "top_comments": [], "engagement": 12069, "category": "其他"}, {"id": "ts_1792819577_447", "author": "nzycicihz", "handle": "nzycicihz", "date": "2026-10-24", "timestamp": 1792819577, "text": "1天\n救命大家就是這是我新創的一個帳號 因為我最近發現男友怪怪的 我總覺得他在跟別的女生聊天 所以有人可以幫我先追蹤這個帳號 讓粉絲人數多一點看起來才不像是一個假帳號 因為我想用這個帳號追蹤我懷疑是和男友聊天女生的帳號 拜託大家追蹤一下我的脆 因為那個女生的脆是私人的 等她同意之後我會移除你們的 我是想確認是不是真的 拜託大家😭🙏", "likes": 10000, "replies": 223, "url": "https://www.threads.com/@nzycicihz/post/De0BD9dkzmi", "top_comments": [], "engagement": 10223, "category": "求助請益"}, {"id": "ts_1792819735_741", "author": "2026-10-13", "handle": "carro_tsai", "date": "2026-10-13", "timestamp": 1792819735, "text": "2026-10-13\n暈船仔😡😡😡", "likes": 6989, "replies": 30, "url": "https://www.threads.com/@carro_tsai/post/DedghG6E2zE", "top_comments": [], "engagement": 7019, "category": "其他"}, {"id": "ts_1792819735_331", "author": "2026-10-7", "handle": "ff80.6", "date": "2026-10-07", "timestamp": 1792819735, "text": "2026-10-7\n暈船是單方面的\n曖昧是雙向的\n望周知", "likes": 6756, "replies": 25, "url": "https://www.threads.com/@ff80.6/post/DeMiIQ3FCNi", "top_comments": [], "engagement": 6781, "category": "其他"}, {"id": "ts_1792819678_558", "author": "w.kst_", "handle": "w.kst_", "date": "2026-10-24", "timestamp": 1792819678, "text": "3天\nGirls你地要揾到一個咁樣嘅男朋友(⁎⁍̴̛ᴗ⁍̴̛⁎)🤍", "likes": 5979, "replies": 197, "url": "https://www.threads.com/@w.kst_/post/Devfl8JkyBh", "top_comments": [], "engagement": 6176, "category": "其他"}, {"id": "ts_1792819577_342", "author": "弘光科技大學", "handle": "yolo10_26", "date": "2026-10-24", "timestamp": 1792819577, "text": "弘光科技大學\n1天\n出軌 環安系", "likes": 5541, "replies": 91, "url": "https://www.threads.com/@yolo10_26/post/DeyX-0fkWsT", "top_comments": [], "engagement": 5632, "category": "案例分享"}, {"id": "ts_1792819471_225", "author": "肥皂箱E場次", "handle": "d_f_b_1212", "date": "2026-10-06", "timestamp": 1792819471, "text": "肥皂箱E場次\n2026-10-6\n吳思瑤委員說最喜歡吃士林夜市石頭鄉烤玉米，我還在想士林夜市有這攤嗎？\n果然活動結束後思瑤委員馬上出現在攤位買起來～有夠接地氣！", "likes": 5107, "replies": 42, "url": "https://www.threads.com/@d_f_b_1212/post/DeJt6lMgQHG", "top_comments": [], "engagement": 5149, "category": "其他"}, {"id": "ts_1792819909_370", "author": "c.ccchanyn", "handle": "c.ccchanyn", "date": "2026-10-24", "timestamp": 1792819909, "text": "3天\n邊界感一定要有 (｀_´)", "likes": 4636, "replies": 108, "url": "https://www.threads.com/@c.ccchanyn/post/DetFqVqCfWc", "top_comments": [], "engagement": 4744, "category": "其他"}, {"id": "ts_1792819735_166", "author": "2026-10-7", "handle": "qq1234_0000", "date": "2026-10-07", "timestamp": 1792819735, "text": "2026-10-7\n為了不暈船，找了別人，結果現在暈兩個。", "likes": 4069, "replies": 193, "url": "https://www.threads.com/@qq1234_0000/post/DeOTzW6E3B0", "top_comments": [], "engagement": 4262, "category": "其他"}, {"id": "ts_1792819735_974", "author": "1kxcgj_43", "handle": "1kxcgj_43", "date": "2026-10-24", "timestamp": 1792819735, "text": "6天\n暈船一個禮拜迅速下船\n我超強 清醒暈船大師", "likes": 3314, "replies": 54, "url": "https://www.threads.com/@1kxcgj_43/post/DemAvgSEwO-", "top_comments": [], "engagement": 3368, "category": "其他"}, {"id": "ts_1792819721_591", "author": "2026-10-16", "handle": "w.p.y_03", "date": "2026-10-16", "timestamp": 1792819721, "text": "2026-10-16\n塑造一個高冷男跟搞笑女的氛圍", "likes": 3022, "replies": 3, "url": "https://www.threads.com/@w.p.y_03/post/DejfQ_rEneg", "top_comments": [], "engagement": 3025, "category": "幽默梗"}, {"id": "ts_1792819749_314", "author": "2026-10-11", "handle": "67wl62", "date": "2026-10-11", "timestamp": 1792819749, "text": "2026-10-11\n當你人跟你告白，你會？", "likes": 2705, "replies": 171, "url": "https://www.threads.com/@67wl62/post/DeW6XfwAVy1", "top_comments": [], "engagement": 2876, "category": "其他"}, {"id": "ts_1792819471_973", "author": "2026-10-6", "handle": "wusuyao541", "date": "2026-10-06", "timestamp": 1792819471, "text": "2026-10-6\n這不是真愛，什麼是真愛？", "likes": 2760, "replies": 11, "url": "https://www.threads.com/@wusuyao541/post/DeJytrQksdS", "top_comments": [], "engagement": 2771, "category": "其他"}, {"id": "ts_1792819721_172", "author": "2026-10-7", "handle": "orion120337", "date": "2026-10-07", "timestamp": 1792819721, "text": "2026-10-7\n冷知识：长发男开出直男概率远高于其他分类男性。", "likes": 2586, "replies": 60, "url": "https://www.threads.com/@orion120337/post/DeMPRvkmSts", "top_comments": [], "engagement": 2646, "category": "其他"}, {"id": "ts_1792819822_218", "author": "nghexuansangtrong79", "handle": "nghexuansangtrong79", "date": "2026-10-24", "timestamp": 1792819822, "text": "17小時\n比老人年輕一點 比年輕人老一點\n尷尬的年紀 單身未婚 尷尬的我 主打一個：\n年齡不上不下 精神狀態直接發瘋🤣🤣🤣", "likes": 2318, "replies": 163, "url": "https://www.threads.com/@nghexuansangtrong79/post/De1hwOKj5Z0", "top_comments": [], "engagement": 2481, "category": "其他"}, {"id": "ts_1792819692_618", "author": "wynne1212xx", "handle": "wynne1212xx", "date": "2026-10-24", "timestamp": 1792819692, "text": "1天\n你俩又吵架了是吧。", "likes": 2324, "replies": 9, "url": "https://www.threads.com/@wynne1212xx/post/DeyTykhmx80", "top_comments": [], "engagement": 2333, "category": "抱怨"}, {"id": "ts_1792819486_642", "author": "2026-10-8", "handle": "k0niv", "date": "2026-10-08", "timestamp": 1792819486, "text": "2026-10-8\n戀愛的條件🫧🐰", "likes": 1372, "replies": 9, "url": "https://www.threads.com/@k0niv/post/DePNJHjk44_", "top_comments": [], "engagement": 1381, "category": "其他"}, {"id": "ts_1792819563_825", "author": "2026-10-11", "handle": "tynero0101_", "date": "2026-10-11", "timestamp": 1792819563, "text": "2026-10-11\n最近是有什麼分手潮嗎..怎麼大家都在分手", "likes": 1122, "replies": 77, "url": "https://www.threads.com/@tynero0101_/post/DeV0MLSmiQ3", "top_comments": [], "engagement": 1199, "category": "其他"}, {"id": "ts_1792819563_268", "author": "2026-10-15", "handle": "asd68891788", "date": "2026-10-15", "timestamp": 1792819563, "text": "2026-10-15\n你們分手是怎麼走出來的", "likes": 482, "replies": 711, "url": "https://www.threads.com/@asd68891788/post/DeghlrllF5X", "top_comments": [], "engagement": 1193, "category": "求助請益"}, {"id": "ts_1792819563_379", "author": "2026-10-13", "handle": "bozszn", "date": "2026-10-13", "timestamp": 1792819563, "text": "2026-10-13\n分手後回去找前任都是什麼人", "likes": 1054, "replies": 109, "url": "https://www.threads.com/@bozszn/post/Dea0hFfoxIi", "top_comments": [], "engagement": 1163, "category": "求助請益"}, {"id": "ts_1792819895_154", "author": "LingOrm", "handle": "soupkornling", "date": "2026-10-24", "timestamp": 1792819895, "text": "LingOrm\n1天\n馳名雙標 再度出現 😌\ngoldenomulo\n1天\n輕握 緊握", "likes": 1033, "replies": 5, "url": "https://www.threads.com/@soupkornling/post/DezXBt9DzV1", "top_comments": [], "engagement": 1038, "category": "其他"}, {"id": "ts_1792819895_836", "author": "LingOrm", "handle": "goldenomulo", "date": "2026-10-24", "timestamp": 1792819895, "text": "LingOrm\n1天\n馳名雙標 再度出現 😌\ngoldenomulo\n1天\n輕握 緊握", "likes": 1033, "replies": 5, "url": "https://www.threads.com/@goldenomulo/post/Dey4fr8FDf5", "top_comments": [], "engagement": 1038, "category": "其他"}, {"id": "ts_1792819534_929", "author": "lhy.04_", "handle": "lhy.04_", "date": "2026-10-24", "timestamp": 1792819534, "text": "14小時\n現在只想交一個朋友圈乾淨有邊界感的女朋友", "likes": 934, "replies": 14, "url": "https://www.threads.com/@lhy.04_/post/De118Qhk0cn", "top_comments": [], "engagement": 948, "category": "其他"}, {"id": "ts_1792819822_789", "author": "感情", "handle": "lilli.ankuo", "date": "2026-10-24", "timestamp": 1792819822, "text": "感情\n14小時\n今天剛好有空滑脆 ￼看到不少脆友們為情所擾 ￼我想分享\n我54歲，目前單身。\n經濟獨立、身體健康、情緒穩定，外表也還算對得起自己。😆\n我對生活充滿熱情，\n對愛情依然有憧憬，\n始終覺得，兩個人相愛是一件很美好的事。\n但走到人生這個階段，我越來越清楚自己想要的是什麼。\n我不需要一個人來證明自己的價值，也不需要一段關係來填補生活的空白。\n能讓我心動的男人，\n至少要有與我相當的條件，\n更重要的是，有相近的價值觀、\n相同的人生方向，\n以及一起享受生活的熱情。\n我希望兩個人在一起，\n不是誰依附誰，也不是誰委屈誰，而是彼此欣賞、互相尊重，\n讓原本就很好的生活，變得更加精彩。\n我相信愛情，但不迷信愛情。\n我期待有人同行，但不害怕獨自前行。\n遇見值得的人，我願意真心投入。沒有遇見，我也能把日子過得有聲有色。\n因為我始終相信，真正好的感情，不是讓女人失去自己，\n而是讓兩個完整的人，遇見更好的彼此。\n不遷就，不強求。\n不因寂寞而選擇，\n也不因年齡而降低標準。\n單身不是因為沒有人愛，\n而是我已經有能力，選擇自己想要的愛。 ❤️", "likes": 720, "replies": 150, "url": "https://www.threads.com/@lilli.ankuo/post/De1zjE8mdfG", "top_comments": [], "engagement": 870, "category": "案例分享"}, {"id": "ts_1792819692_481", "author": "syyylvvvia_", "handle": "syyylvvvia_", "date": "2026-10-24", "timestamp": 1792819692, "text": "5天\n他们吵架都在吵什么啊🫪可好奇啊\njounharu_\n5天\n不是好好笑 所以小篤這天真的吵架了嗎哈哈哈哈\n昨天那個花絮裡面 明明兩個人站在一起\n平時可能會貼上去了\n但這天兩個人隔著那個距離\n像隔了一條銀河一樣 沒有任何對視\n連宣傳a nation的影片都感覺氣氛有點微妙\n還有那天的dive into you 他們沒有一起唱\n不知道是不是真的吵架🤣🤣", "likes": 751, "replies": 8, "url": "https://www.threads.com/@syyylvvvia_/post/Deo1PLxCkGA", "top_comments": [], "engagement": 759, "category": "幽默梗"}, {"id": "ts_1792819692_917", "author": "jounharu_", "handle": "jounharu_", "date": "2026-10-24", "timestamp": 1792819692, "text": "5天\n不是好好笑 所以小篤這天真的吵架了嗎哈哈哈哈\n昨天那個花絮裡面 明明兩個人站在一起\n平時可能會貼上去了\n但這天兩個人隔著那個距離\n像隔了一條銀河一樣 沒有任何對視\n連宣傳a nation的影片都感覺氣氛有點微妙\n還有那天的dive into you 他們沒有一起唱\n不知道是不是真的吵架🤣🤣", "likes": 751, "replies": 8, "url": "https://www.threads.com/@jounharu_/post/Deow1Mkkw0T", "top_comments": [], "engagement": 759, "category": "幽默梗"}, {"id": "ts_1792819678_420", "author": "sanny911019", "handle": "sanny911019", "date": "2026-10-24", "timestamp": 1792819678, "text": "6天\n女朋友想要 女朋友得到꒰◍⍢◍꒱۶", "likes": 685, "replies": 14, "url": "https://www.threads.com/@sanny911019/post/DemWrRHEiX2", "top_comments": [], "engagement": 699, "category": "其他"}, {"id": "ts_1792819851_794", "author": "2026-10-14", "handle": "yyuu_ehh", "date": "2026-10-14", "timestamp": 1792819851, "text": "2026-10-14\n住大直的男生叫大直男嗎", "likes": 639, "replies": 48, "url": "https://www.threads.com/@yyuu_ehh/post/DegEnEjEvX8", "top_comments": [], "engagement": 687, "category": "其他"}, {"id": "ts_1792819563_260", "author": "2026-10-9", "handle": "7nyxc_", "date": "2026-10-09", "timestamp": 1792819563, "text": "2026-10-9\n分手後對方想當朋友是什麼心態", "likes": 584, "replies": 92, "url": "https://www.threads.com/@7nyxc_/post/DeSEgcIE1BJ", "top_comments": [], "engagement": 676, "category": "求助請益"}, {"id": "ts_1792819549_119", "author": "reve_fruit", "handle": "reve_fruit", "date": "2026-10-24", "timestamp": 1792819549, "text": "1天\nRei與她的姐夫....🥰很可愛！！！！\n不出所料留言有Joy被提及哈哈哈哈\npnation.official", "likes": 661, "replies": 4, "url": "https://www.threads.com/@reve_fruit/post/DezHiQgoy-u", "top_comments": [], "engagement": 665, "category": "幽默梗"}, {"id": "ts_1792819808_289", "author": "cwxioy._.5.20", "handle": "cwxioy._.5.20", "date": "2026-10-24", "timestamp": 1792819808, "text": "20小時\n一個沒被哄過的男生\n哄女生是很容易被冷暴力的", "likes": 610, "replies": 17, "url": "https://www.threads.com/@cwxioy._.5.20/post/De1NwB3ExHw", "top_comments": [], "engagement": 627, "category": "其他"}, {"id": "ts_1792819563_305", "author": "2026-10-14", "handle": "4cyza_", "date": "2026-10-14", "timestamp": 1792819563, "text": "2026-10-14\n你們分手後都怎麼走出來的…", "likes": 287, "replies": 231, "url": "https://www.threads.com/@4cyza_/post/DeeI5U_Aa6m", "top_comments": [], "engagement": 518, "category": "求助請益"}, {"id": "ts_1792819822_976", "author": "2026-10-15", "handle": "jingru_900101", "date": "2026-10-15", "timestamp": 1792819822, "text": "2026-10-15\n兩隻小豬🥱", "likes": 476, "replies": 29, "url": "https://www.threads.com/@jingru_900101/post/DehIYAWEkUE", "top_comments": [], "engagement": 505, "category": "其他"}, {"id": "ts_1792819649_414", "author": "elenacat1124", "handle": "elenacat1124", "date": "2026-10-24", "timestamp": 1792819649, "text": "4小時\n以前交往十年的男朋友\n他口袋的零錢都是幾千元\n每天背一個黑色背包，裡面都裝約1百萬現金\n買過兩棟6000多萬的房子（一棟在勤美綠園道7-11樓上），3棟3000多萬的\n現在的診所也是自己買下來的（120幾坪）在文心路上\n每兩三年換一台新汽車\n他這樣算有錢人嗎？\n其實我不知道\n我很少花他的錢\n除了吃飯，他很少讓我付錢\n我要付錢他會生氣\n一起出國若他要開會\n會拿1~2萬美金給我或黑卡給我\n叫我去血拼，買東西包包回去送給家人同事朋友\n我通常都原封不動再還給他\n他每次都納悶我怎麼都把錢不多不少又還給他\n其實他不懂\n我不想欠任何人東西\n花他的錢感覺就會覺得欠他許多\n這樣的感情也會不平衡\n我朋友都說我是怪咖\n我從來不覺得自己是怪咖\n只覺得自己過的心安理得\n這是真實的我的經歷，基於無法公開他的姓名跟照片，相信一定又有人說我在編故事\n再說我編故事的我立刻封鎖", "likes": 335, "replies": 146, "url": "https://www.threads.com/@elenacat1124/post/De27-ndo8j8", "top_comments": [], "engagement": 481, "category": "案例分享"}, {"id": "ts_1792819678_225", "author": "bonniebonnyx", "handle": "bonniebonnyx", "date": "2026-10-24", "timestamp": 1792819678, "text": "2天\n同款男友🫪", "likes": 386, "replies": 4, "url": "https://www.threads.com/@bonniebonnyx/post/DevtqpGlAzC", "top_comments": [], "engagement": 390, "category": "其他"}, {"id": "ts_1792819822_137", "author": "norah2.14", "handle": "norah2.14", "date": "2026-10-24", "timestamp": 1792819822, "text": "18小時\n阿珍目前單身中\n今年50歲🤣🤣\n#母女 #生日花束 #生日蛋糕🎂", "likes": 374, "replies": 13, "url": "https://www.threads.com/@norah2.14/post/De1aHtBknNF", "top_comments": [], "engagement": 387, "category": "其他"}, {"id": "ts_1792819563_675", "author": "2026-10-16", "handle": "ineedsomuchlove", "date": "2026-10-16", "timestamp": 1792819563, "text": "2026-10-16\n點解要分手", "likes": 326, "replies": 60, "url": "https://www.threads.com/@ineedsomuchlove/post/DejwrRGkmLX", "top_comments": [], "engagement": 386, "category": "其他"}, {"id": "ts_1792819649_856", "author": "1yan.iix", "handle": "1yan.iix", "date": "2026-10-24", "timestamp": 1792819649, "text": "1天\n有人要交往嗎(ㆀ˘･з･˘)\n需要一個戀愛腦的男友 認真的找我", "likes": 350, "replies": 22, "url": "https://www.threads.com/@1yan.iix/post/DezQrUxkd28", "top_comments": [], "engagement": 372, "category": "其他"}, {"id": "ts_1792819749_357", "author": "2026-10-9", "handle": "zy1o67", "date": "2026-10-09", "timestamp": 1792819749, "text": "2026-10-9\n曖昧到什麼程度才能告白", "likes": 323, "replies": 4, "url": "https://www.threads.com/@zy1o67/post/DeRPX77mAtk", "top_comments": [], "engagement": 327, "category": "其他"}, {"id": "ts_1792819664_612", "author": "2026-10-11", "handle": "_dfen_bb", "date": "2026-10-11", "timestamp": 1792819664, "text": "2026-10-11\n為什麼人要談戀愛？", "likes": 209, "replies": 86, "url": "https://www.threads.com/@_dfen_bb/post/DeWrNMKk2IG", "top_comments": [], "engagement": 295, "category": "觀點爭論"}, {"id": "ts_1792819822_323", "author": "男生喜歡男生", "handle": "hahaoppy", "date": "2026-10-24", "timestamp": 1792819822, "text": "男生喜歡男生\n15小時\n單身的第不知道幾年", "likes": 276, "replies": 5, "url": "https://www.threads.com/@hahaoppy/post/De1rhPbn-a4", "top_comments": [], "engagement": 281, "category": "其他"}, {"id": "ts_1792819534_289", "author": "錢都日式涮涮鍋", "handle": "haowen.x", "date": "2026-10-24", "timestamp": 1792819534, "text": "錢都日式涮涮鍋\n18小時\n脆朋友們 大家晚上愉快\n跟女朋友跑去錢都吃刷刷鍋囉！結果看到女朋友沒有化妝沒關係自然就是美呀？各位你們吃晚餐了嗎?要記得去吃晚餐喔可不要餓壞自己的肚子唷！", "likes": 255, "replies": 10, "url": "https://www.threads.com/@haowen.x/post/De1aTu5lL_z", "top_comments": [], "engagement": 265, "category": "其他"}, {"id": "ts_1792819577_154", "author": "tp2005214", "handle": "tp2005214", "date": "2026-10-24", "timestamp": 1792819577, "text": "1天\n久等啦\n首先我沒有影射誰\n我在別人的串文講自己的故事\n說前東家沒給我薪水\n有人就自己對號入座\n甚至來我回文下留言\n講的都是斷章取義 我也懶得回\n所以我就封鎖了\n沒想到被開副本啦？\n對 我有過去\n沒有不認小孩\n是她拿了所有資源跟小孩\n還和我們的男性友人在婚內出軌\n友人也離婚帶了兩個小孩\n所以他們一家六口現在過得非常好\n不得不說 友人可能對小孩和前妻都很好\n再來是為什麼離婚？\n卡到太多錢和家庭的事情\n過去我自己創業賣菜\n一路從無到有\n到後來他家人來找我們補貨\n欠了幾十萬的貨款\n她家人在賣烤肉期間也欠我很多錢\n這些都在他媽媽的帳本裡～\n但是那些證據她家人甚至她也都不敢拿出來\n無所謂\n然後少再說我不懂感恩妳家人\n沒有你家人吸血我成就早就更高\n現在也不知道賺了多少錢\n如果真的有需要我還會更新更多\n對了 圖是另外一個故事", "likes": 201, "replies": 35, "url": "https://www.threads.com/@tp2005214/post/DeyU-HBGCmw", "top_comments": [], "engagement": 236, "category": "案例分享"}, {"id": "ts_1792819822_164", "author": "單身日記", "handle": "fashion.your.home", "date": "2026-10-24", "timestamp": 1792819822, "text": "單身日記\n20小時\n江澈的單身日常也太真實了吧\n單身日記 #單身生活 #日常 #tiktok #insta", "likes": 223, "replies": 7, "url": "https://www.threads.com/@fashion.your.home/post/De1Kv1PjLjs", "top_comments": [], "engagement": 230, "category": "其他"}, {"id": "ts_1792819851_918", "author": "2026-10-8", "handle": "theaherstory", "date": "2026-10-08", "timestamp": 1792819851, "text": "2026-10-8\n华语直男歌手里已经很少出现艺术家了，陈奕迅可以算一个", "likes": 171, "replies": 46, "url": "https://www.threads.com/@theaherstory/post/DeOhMoeG6V6", "top_comments": [], "engagement": 217, "category": "其他"}, {"id": "ts_1792819749_483", "author": "2026-10-16", "handle": "zhrnn__06", "date": "2026-10-16", "timestamp": 1792819749, "text": "2026-10-16\n：「談戀愛要從一束花和正式的告白開始」\n💐🤍\nSailor Song · Gigi Perez", "likes": 189, "replies": 3, "url": "https://www.threads.com/@zhrnn__06/post/DejPlKvk3UA", "top_comments": [], "engagement": 192, "category": "其他"}, {"id": "ts_1792819514_377", "author": "男生喜歡男生", "handle": "lwx_1206_", "date": "2026-10-10", "timestamp": 1792819514, "text": "男生喜歡男生\n2026-10-10\n想要有個男朋友\n一個穩定的關係", "likes": 171, "replies": 14, "url": "https://www.threads.com/@lwx_1206_/post/DeUV3-1iaml", "top_comments": [], "engagement": 185, "category": "其他"}, {"id": "ts_1792819924_431", "author": "2026-10-16", "handle": "aimashi666", "date": "2026-10-16", "timestamp": 1792819924, "text": "2026-10-16\n我是媽寶\n買衣服先問娘", "likes": 169, "replies": 7, "url": "https://www.threads.com/@aimashi666/post/DekwD3lmWBw", "top_comments": [], "engagement": 176, "category": "其他"}],
+  topicDistribution: {"其他": 34, "幽默梗": 4, "抱怨": 1, "案例分享": 4, "求助請益": 5, "觀點爭論": 2},
+  topicSummaries: [{"topic": "觀點爭論", "post_count": 2, "total_likes": 28209, "top_post": {"id": "ts_1792819649_460", "author": "coward__hsu", "handle": "coward__hsu", "date": "2026-10-24", "timestamp": 1792819649, "text": "1天\n難道這就是跟年下交往先天性的壓制嗎…\n看完他吃的東西我覺得我可以暈一整天", "likes": 28000, "replies": 206, "url": "https://www.threads.com/@coward__hsu/post/DeyVXZpHcWW", "top_comments": [], "engagement": 28206, "category": "觀點爭論"}, "summary": "【爭什麼】「1天 難道這就是跟年下交往先天性的壓制嗎… 看完他吃的東西我覺得我可以暈一整天」 （共 2 篇交鋒，最高讚 28,000）"}, {"topic": "案例分享", "post_count": 4, "total_likes": 6797, "top_post": {"id": "ts_1792819577_342", "author": "弘光科技大學", "handle": "yolo10_26", "date": "2026-10-24", "timestamp": 1792819577, "text": "弘光科技大學\n1天\n出軌 環安系", "likes": 5541, "replies": 91, "url": "https://www.threads.com/@yolo10_26/post/DeyX-0fkWsT", "top_comments": [], "engagement": 5632, "category": "案例分享"}, "summary": "【真實愛情切片】弘光科技大學 1天 出軌 環安系 （4 篇故事，最高 5,541 讚）"}, {"topic": "抱怨", "post_count": 1, "total_likes": 2324, "top_post": {"id": "ts_1792819692_618", "author": "wynne1212xx", "handle": "wynne1212xx", "date": "2026-10-24", "timestamp": 1792819692, "text": "1天\n你俩又吵架了是吧。", "likes": 2324, "replies": 9, "url": "https://www.threads.com/@wynne1212xx/post/DeyTykhmx80", "top_comments": [], "engagement": 2333, "category": "抱怨"}, "summary": "【最爆怨】1天 你俩又吵架了是吧。 （1 篇抱怨文，最高 2,324 讚）"}, {"topic": "幽默梗", "post_count": 4, "total_likes": 5185, "top_post": {"id": "ts_1792819721_591", "author": "2026-10-16", "handle": "w.p.y_03", "date": "2026-10-16", "timestamp": 1792819721, "text": "2026-10-16\n塑造一個高冷男跟搞笑女的氛圍", "likes": 3022, "replies": 3, "url": "https://www.threads.com/@w.p.y_03/post/DejfQ_rEneg", "top_comments": [], "engagement": 3025, "category": "幽默梗"}, "summary": "【最好笑】2026-10-16 塑造一個高冷男跟搞笑女的氛圍 【金句】塑造一個高冷男跟搞笑女的氛圍 （4 篇搞笑梗，最高 3,022 讚）"}, {"topic": "求助請益", "post_count": 5, "total_likes": 12407, "top_post": {"id": "ts_1792819577_447", "author": "nzycicihz", "handle": "nzycicihz", "date": "2026-10-24", "timestamp": 1792819577, "text": "1天\n救命大家就是這是我新創的一個帳號 因為我最近發現男友怪怪的 我總覺得他在跟別的女生聊天 所以有人可以幫我先追蹤這個帳號 讓粉絲人數多一點看起來才不像是一個假帳號 因為我想用這個帳號追蹤我懷疑是和男友聊天女生的帳號 拜託大家追蹤一下我的脆 因為那個女生的脆是私人的 等她同意之後我會移除你們的 我是想確認是不是真的 拜託大家😭🙏", "likes": 10000, "replies": 223, "url": "https://www.threads.com/@nzycicihz/post/De0BD9dkzmi", "top_comments": [], "engagement": 10223, "category": "求助請益"}, "summary": "【最糾結】1天 救命大家就是這是我新創的一個帳號 因為我最近發現男友怪怪的 我總覺得他在跟別的女生聊天 所以有⋯ （5 篇求助，最高 10,000 讚）"}, {"topic": "其他", "post_count": 34, "total_likes": 82336, "top_post": {"id": "ts_1792819649_455", "author": "c816yy", "handle": "c816yy", "date": "2026-10-24", "timestamp": 1792819649, "text": "23小時\n絕交是指絕對要和溫柔黑長直大姊姊交往的意思嗎", "likes": 12000, "replies": 71, "url": "https://www.threads.com/@c816yy/post/De04XY4EmaY", "top_comments": [], "engagement": 12071, "category": "其他"}, "summary": "【混合話題】23小時 絕交是指絕對要和溫柔黑長直大姊姊交往的意思嗎（34 篇，最高12,000讚）"}],
+  punchlines: [{"text": "難道這就是跟年下交往先天性的壓制嗎…", "source": "coward__hsu", "likes": 28000, "score": 84}, {"text": "吳思瑤委員說最喜歡吃士林夜市石頭鄉烤玉米，我還在想士林夜市有這攤嗎？", "source": "肥皂箱E場次", "likes": 5107, "score": 10}, {"text": "果然活動結束後思瑤委員馬上出現在攤位買起來～有夠接地氣！", "source": "肥皂箱E場次", "likes": 5107, "score": 10}],
+};
+
+const CHART_COLORS = ['#f5a0b5','#e8a87c','#b8a9c9','#d4c5a9','#a8c5c9','#c9b8a8','#d4b8c9'];
+
+// Tab switching
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById('page-' + tab.dataset.tab).classList.add('active');
+  });
+});
+
+// Punchlines
+const punchlineContainer = document.getElementById('punchlineContainer');
+DATA.punchlines.forEach(pl => {
+  const div = document.createElement('div');
+  div.className = 'punchline-card';
+  div.innerHTML = `<div class="punchline-text">\u201c${pl.text}\u201d</div><div class="punchline-source">\u2014 ${pl.source} &middot; &#10084; ${pl.likes?.toLocaleString()}</div>`;
+  punchlineContainer.appendChild(div);
+});
+
+// Topic horizontal bar chart
+const dist = DATA.topicDistribution;
+const sortedDist = Object.entries(dist).sort((a,b) => b[1] - a[1]);
+new Chart(document.getElementById('topicBarChart'), {
+  type: 'bar',
+  data: {
+    labels: sortedDist.map(([k]) => k),
+    datasets: [{
+      data: sortedDist.map(([,v]) => v),
+      backgroundColor: ['#f5a0b5','#e8a87c','#b8a9c9','#d4c5a9','#a8c5c9','#c9b8a8','#d4b8c9'],
+      borderRadius: 4,
+    }]
+  },
+  options: {
+    responsive:true, maintainAspectRatio:true, indexAxis:'y',
+    plugins:{ legend:{ display:false } },
+    scales:{
+      x:{ grid:{ display:false }, ticks:{ display:false }, title:{ display:false } },
+      y:{ grid:{ display:false }, title:{ display:false } }
+    }
+  }
+});
+
+// Likes bar chart
+const sorted = [...DATA.posts].sort((a,b) => b.likes - a.likes).slice(0,10);
+const labels = sorted.map(p => (p.author || '\u533f\u540d') + ' ' + (p.text||'').slice(0,15).replace(/\n/g,' ') + '\u22ef');
+new Chart(document.getElementById('likesBarChart'), {
+  type: 'bar',
+  data: {
+    labels: labels,
+    datasets: [{
+      label: '\u8b9a\u6578',
+      data: sorted.map(p => p.likes),
+      backgroundColor: '#f5a0b5',
+      borderRadius: 4,
+    }]
+  },
+  options: {
+    responsive:true, maintainAspectRatio:true, indexAxis:'y',
+    plugins:{ legend:{ display:false } },
+    scales:{
+      x:{ grid:{ display:false }, ticks:{ callback:v=>v>=1000?(v/1000).toFixed(0)+'k':v } },
+      y:{ grid:{ display:false }, title:{ display:false } }
+    },
+    layout:{ padding:{ right:40 } }
+  }
+});
+
+// Topic summaries
+const topicContainer = document.getElementById('topicContainer');
+DATA.topicSummaries.forEach(s => {
+  const div = document.createElement('div');
+  div.className = 'topic-card';
+  div.innerHTML = `<div class="topic-title">&#128204; ${s.topic} <span class="topic-meta">（${s.post_count} 則 · &#10084; ${s.total_likes?.toLocaleString()}）</span></div><div class="topic-summary">${s.summary}</div>`;
+  topicContainer.appendChild(div);
+});
+
+// Filters
+const filterContainer = document.getElementById('filterContainer');
+const allBtn = document.createElement('button');
+allBtn.className = 'filter-btn active';
+allBtn.textContent = '全部';
+allBtn.dataset.filter = 'all';
+filterContainer.appendChild(allBtn);
+const topics = [...new Set(DATA.posts.map(p => p.category || p.category_hint || '其他'))];
+topics.forEach(t => {
+  const btn = document.createElement('button');
+  btn.className = 'filter-btn';
+  btn.textContent = t;
+  btn.dataset.filter = t;
+  filterContainer.appendChild(btn);
+});
+
+let currentFilter = 'all';
+function renderPosts() {
+  const filtered = currentFilter === 'all' ? DATA.posts : DATA.posts.filter(p => (p.category || p.category_hint || '其他') === currentFilter);
+  const container = document.getElementById('postListContainer');
+  container.innerHTML = filtered.map((p,i) => `
+    <div class="post-card">
+      <h4>&#128100; ${p.author || '匿名'} <span class="meta">@${p.handle||''} &middot; ${p.date||''}</span></h4>
+      <div class="text" onclick="this.classList.toggle('expanded')">${p.text}</div>
+      <div class="stats">&#10084; ${p.likes?.toLocaleString()} &middot; &#128172; ${p.replies} &middot; ${p.category || p.category_hint || '未分類'}</div>
+      ${p.url ? '<a class="post-url" href="' + p.url + '" target="_blank" rel="noopener">&#128279; 前往原文</a>' : ''}
+    </div>
+  `).join('');
+  const sel = document.getElementById('postSelect');
+  sel.innerHTML = filtered.map((p,i) => `<option value="${i}">&#10084;${p.likes} | ${p.author||'匿名'} | ${(p.text||'').slice(0,30)}...</option>`).join('');
+  sel.onchange = () => showDetail(parseInt(sel.value));
+}
+
+filterContainer.querySelectorAll('.filter-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    filterContainer.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    currentFilter = btn.dataset.filter;
+    renderPosts();
+  });
+});
+
+function showDetail(idx) {
+  const posts = currentFilter === 'all' ? DATA.posts : DATA.posts.filter(p => (p.category || p.category_hint || '其他') === currentFilter);
+  const p = posts[idx];
+  if (!p) return;
+  const container = document.getElementById('detailContainer');
+  let comments = '';
+  (p.top_comments || []).forEach(c => {
+    comments += `<div class="comment"><div class="comment-author">${c.author||'匿名'}</div><div>${c.text}</div><div style="font-size:0.75rem;color:#adb5bd;">&#10084; ${c.likes}</div></div>`;
+  });
+  container.innerHTML = `
+    <div class="detail-container">
+      <h3>&#128100; ${p.author||'匿名'} <span style="font-weight:400;color:#868e96;">@${p.handle||''}</span></h3>
+      <div style="font-size:0.8rem;color:#868e96;">${p.date||''} &middot; ${p.category||p.category_hint||'未分類'}</div>
+      <div class="text">${p.text}</div>
+      <div style="color:#212529;font-size:0.9rem;">&#10084; ${p.likes?.toLocaleString()} &middot; &#128172; ${p.replies}</div>
+      ${p.url ? '<a class="post-url" href="' + p.url + '" target="_blank" rel="noopener">&#128279; 前往 Threads 原文</a>' : ''}
+      <div style="margin-top:0.8rem;font-weight:600;color:#212529;">&#128172; 熱門留言（前 ${(p.top_comments||[]).length} 則）</div>
+      ${comments || '<div style="color:#adb5bd;">暫無留言資料</div>'}
+    </div>
+  `;
+}
+
+renderPosts();
+showDetail(0);
+</script>
+</body>
+</html>
